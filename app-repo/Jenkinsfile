@@ -6,16 +6,16 @@ pipeline {
     disableConcurrentBuilds()
   }
 
-  environment {
-    REGISTRY_HOST      = 'ghcr.io'
-    REGISTRY_NAMESPACE = 'ghcr.io/your-github-org'
-    IMAGE_NAME         = 'sample-node-app'
-    IMAGE_REPO         = "${REGISTRY_NAMESPACE}/${IMAGE_NAME}"
+environment {
+  REGISTRY_HOST      = 'docker.io'
+  REGISTRY_NAMESPACE = 'nirajpal'
+  IMAGE_NAME         = 'sample-node-app'
+  IMAGE_REPO         = "${REGISTRY_NAMESPACE}/${IMAGE_NAME}"
 
-    MANIFEST_REPO      = 'https://github.com/your-github-org/sample-node-app-manifests.git'
-    MANIFEST_BRANCH    = 'main'
-    MANIFEST_OVERLAY   = 'overlays/dev'
-  }
+  MANIFEST_REPO      = 'https://github.com/nirajj-pal/sample-node-app-manifests.git'
+  MANIFEST_BRANCH    = 'main'
+  MANIFEST_OVERLAY   = 'overlays/dev'
+}
 
   stages {
     stage('Checkout') {
