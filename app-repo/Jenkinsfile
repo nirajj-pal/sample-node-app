@@ -1,0 +1,120 @@
+pipeline {
+  agent { label 'docker' }
+
+  options {
+    timestamps()
+    disableConcurrentBuilds()
+  }
+
+  environment {
+    REGISTRY_HOST      = 'ghcr.io'
+    REGISTRY_NAMESPACE = 'ghcr.io/your-github-org'
+    IMAGE_NAME         = 'sample-node-app'
+    IMAGE_REPO         = "${REGISTRY_NAMESPACE}/${IMAGE_NAME}"
+
+    MANIFEST_REPO      = 'https://github.com/your-github-org/sample-node-app-manifests.git'
+    MANIFEST_BRANCH    = 'main'
+    MANIFEST_OVERLAY   = 'overlays/dev'
+  }
+
+  stages {
+    stage('Checkout') {
+      steps {
+        checkout scm
+      }
+    }
+
+    stage('Install Dependencies') {
+      steps {
+        sh 'npm install'
+      }
+    }
+
+    stage('Run Tests') {
+      steps {
+        sh 'npm test'
+      }
+    }
+
+    stage('Prepare Image Metadata') {
+      steps {
+        script {
+          env.GIT_SHA = sh(returnStdout: true, script: 'git rev-parse --short=8 HEAD').trim()
+          env.IMAGE_TAG = "${env.BUILD_NUMBER}-${env.GIT_SHA}"
+          env.FULL_IMAGE = "${env.IMAGE_REPO}:${env.IMAGE_TAG}"
+        }
+        echo "Image to build: ${env.FULL_IMAGE}"
+      }
+    }
+
+    stage('Build and Push Image') {
+      when {
+        branch 'main'
+      }
+      steps {
+        withCredentials([usernamePassword(
+          credentialsId: 'registry-creds',
+          usernameVariable: 'REG_USER',
+          passwordVariable: 'REG_PASS'
+        )]) {
+          sh '''
+            set -e
+            set +x
+            echo "$REG_PASS" | docker login "$REGISTRY_HOST" -u "$REG_USER" --password-stdin
+            docker build -t "$FULL_IMAGE" .
+            docker push "$FULL_IMAGE"
+            docker logout "$REGISTRY_HOST"
+          '''
+        }
+      }
+    }
+
+    stage('Update Manifests Repo') {
+      when {
+        branch 'main'
+      }
+      steps {
+        withCredentials([usernamePassword(
+          credentialsId: 'github-manifests-creds',
+          usernameVariable: 'GIT_USER',
+          passwordVariable: 'GIT_TOKEN'
+        )]) {
+          sh '''
+            set -e
+            set +x
+
+            rm -rf manifests
+            git clone --branch "$MANIFEST_BRANCH" \
+              "https://${GIT_USER}:${GIT_TOKEN}@github.com/your-github-org/sample-node-app-manifests.git" \
+              manifests
+
+            cd manifests
+
+            IMAGE_TAG="$IMAGE_TAG" yq -i \
+              '(.images[] | select(.name == "ghcr.io/your-github-org/sample-node-app").newTag) = strenv(IMAGE_TAG)' \
+              "$MANIFEST_OVERLAY/kustomization.yaml"
+
+            git config user.name 'jenkins-bot'
+            git config user.email 'jenkins-bot@your-company.example'
+
+            git add "$MANIFEST_OVERLAY/kustomization.yaml"
+
+            if git diff --cached --quiet; then
+              echo 'No manifest changes detected'
+              exit 0
+            fi
+
+            git commit -m "ci: deploy sample-node-app ${IMAGE_TAG}"
+            git push origin HEAD:"$MANIFEST_BRANCH"
+          '''
+        }
+      }
+    }
+  }
+
+  post {
+    always {
+      cleanWs()
+    }
+  }
+}
