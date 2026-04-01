@@ -16,13 +16,21 @@ pipeline {
 
     MANIFEST_REPO      = 'https://github.com/nirajj-pal/sample-node-app-manifests.git'
     MANIFEST_BRANCH    = 'main'
-    MANIFEST_OVERLAY   = 'overlays/dev'
+    MANIFEST_OVERLAY   = 'manifest-repo/overlays/dev'
   }
 
   stages {
     stage('Checkout') {
       steps {
         checkout scm
+      }
+    }
+
+    stage('Debug Branch Info') {
+      steps {
+        echo "BRANCH_NAME = ${env.BRANCH_NAME}"
+        echo "GIT_BRANCH  = ${env.GIT_BRANCH}"
+        echo "GIT_COMMIT  = ${env.GIT_COMMIT}"
       }
     }
 
@@ -46,18 +54,27 @@ pipeline {
       steps {
         script {
           dir("${APP_DIR}") {
-            env.GIT_SHA = sh(returnStdout: true, script: 'git rev-parse --short=8 HEAD').trim()
+            env.GIT_SHA = sh(
+              returnStdout: true,
+              script: 'git rev-parse --short=8 HEAD'
+            ).trim()
           }
-          env.IMAGE_TAG = "${env.BUILD_NUMBER}-${env.GIT_SHA}"
+
+          env.IMAGE_TAG  = "${env.BUILD_NUMBER}-${env.GIT_SHA}"
           env.FULL_IMAGE = "${env.IMAGE_REPO}:${env.IMAGE_TAG}"
         }
+
         echo "Image to build: ${env.FULL_IMAGE}"
       }
     }
 
     stage('Build and Push Image') {
       when {
-        branch 'main'
+        expression {
+          return env.BRANCH_NAME == 'main' ||
+                 env.GIT_BRANCH == 'main' ||
+                 env.GIT_BRANCH == 'origin/main'
+        }
       }
       steps {
         withCredentials([usernamePassword(
@@ -81,7 +98,11 @@ pipeline {
 
     stage('Update Manifests Repo') {
       when {
-        branch 'main'
+        expression {
+          return env.BRANCH_NAME == 'main' ||
+                 env.GIT_BRANCH == 'main' ||
+                 env.GIT_BRANCH == 'origin/main'
+        }
       }
       steps {
         withCredentials([usernamePassword(
