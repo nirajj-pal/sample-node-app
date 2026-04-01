@@ -96,51 +96,55 @@ pipeline {
       }
     }
 
-    stage('Update Manifests Repo') {
-      when {
-        expression {
-          return env.BRANCH_NAME == 'main' ||
-                 env.GIT_BRANCH == 'main' ||
-                 env.GIT_BRANCH == 'origin/main'
-        }
-      }
-      steps {
-        withCredentials([usernamePassword(
-          credentialsId: 'github-manifests-creds',
-          usernameVariable: 'GIT_USER',
-          passwordVariable: 'GIT_TOKEN'
-        )]) {
-          sh '''
-            set -e
-            set +x
-
-            rm -rf manifests
-            git clone --branch "$MANIFEST_BRANCH" \
-              "https://${GIT_USER}:${GIT_TOKEN}@github.com/nirajj-pal/sample-node-app-manifests.git" \
-              manifests
-
-            cd manifests
-
-            IMAGE_TAG="$IMAGE_TAG" yq -i \
-              '(.images[] | select(.name == "nirajpal/sample-node-app").newTag) = strenv(IMAGE_TAG)' \
-              "$MANIFEST_OVERLAY/kustomization.yaml"
-
-            git config user.name 'jenkins-bot'
-            git config user.email 'jenkins-bot@your-company.example'
-
-            git add "$MANIFEST_OVERLAY/kustomization.yaml"
-
-            if git diff --cached --quiet; then
-              echo 'No manifest changes detected'
-              exit 0
-            fi
-
-            git commit -m "ci: deploy sample-node-app ${IMAGE_TAG}"
-            git push origin HEAD:"$MANIFEST_BRANCH"
-          '''
-        }
-      }
+stage('Update Manifests Repo') {
+  when {
+    expression {
+      return env.BRANCH_NAME == 'main' ||
+             env.GIT_BRANCH == 'main' ||
+             env.GIT_BRANCH == 'origin/main'
     }
+  }
+  steps {
+    withCredentials([usernamePassword(
+      credentialsId: 'github-manifests-creds',
+      usernameVariable: 'GIT_USER',
+      passwordVariable: 'GIT_TOKEN'
+    )]) {
+      sh '''
+        set -e
+        set +x
+
+        rm -rf manifests
+
+        git clone --branch "$MANIFEST_BRANCH" \
+          "https://${GIT_USER}:${GIT_TOKEN}@github.com/nirajj-pal/sample-node-app-manifests.git" \
+          manifests
+
+        cd manifests
+
+        IMAGE_TAG="$IMAGE_TAG" yq -i \
+          '(.images[] | select(.name == "nirajpal/sample-node-app").newTag) = strenv(IMAGE_TAG)' \
+          "$MANIFEST_OVERLAY/kustomization.yaml"
+
+        git config user.name 'jenkins-bot'
+        git config user.email 'jenkins-bot@your-company.example'
+
+        git add "$MANIFEST_OVERLAY/kustomization.yaml"
+
+        if git diff --cached --quiet; then
+          echo 'No manifest changes detected'
+          exit 0
+        fi
+
+        git commit -m "ci: deploy sample-node-app ${IMAGE_TAG}"
+
+        git push \
+          "https://${GIT_USER}:${GIT_TOKEN}@github.com/nirajj-pal/sample-node-app-manifests.git" \
+          HEAD:"$MANIFEST_BRANCH"
+      '''
+    }
+  }
+}
   }
 
   post {
